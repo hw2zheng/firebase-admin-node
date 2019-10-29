@@ -21,6 +21,7 @@ import {
   AbstractAuthRequestHandler, AuthRequestHandler, TenantAwareAuthRequestHandler,
 } from './auth-api-request';
 import {AuthClientErrorCode, FirebaseAuthError, ErrorInfo} from '../utils/error';
+import {Agent} from 'http';
 import {FirebaseServiceInterface, FirebaseServiceInternalsInterface} from '../firebase-service';
 import {
   UserImportOptions, UserImportRecord, UserImportResult,
@@ -106,10 +107,10 @@ export class BaseAuth<T extends AbstractAuthRequestHandler> {
    */
   constructor(protected readonly projectId: string,
               protected readonly authRequestHandler: T,
-              cryptoSigner: CryptoSigner) {
+              cryptoSigner: CryptoSigner, agent?: Agent) {
     this.tokenGenerator = new FirebaseTokenGenerator(cryptoSigner);
     this.sessionCookieVerifier = createSessionCookieVerifier(projectId);
-    this.idTokenVerifier = createIdTokenVerifier(projectId);
+    this.idTokenVerifier = createIdTokenVerifier(projectId, agent);
   }
 
   /**
@@ -749,7 +750,9 @@ export class Auth extends BaseAuth<AuthRequestHandler> implements FirebaseServic
     super(
         Auth.getProjectId(app),
         new AuthRequestHandler(app),
-        cryptoSignerFromApp(app));
+        cryptoSignerFromApp(app),
+        app.options.httpAgent,
+        );
     this.app_ = app;
     this.tenantManager_ = new TenantManager(app);
   }

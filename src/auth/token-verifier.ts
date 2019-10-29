@@ -19,6 +19,7 @@ import {AuthClientErrorCode, FirebaseAuthError, ErrorInfo} from '../utils/error'
 import * as validator from '../utils/validator';
 import * as jwt from 'jsonwebtoken';
 import { HttpClient, HttpRequestConfig, HttpError } from '../utils/api-request';
+import {Agent} from 'http';
 import { DecodedIdToken } from './auth';
 
 // Audience to use for Firebase Auth Custom tokens
@@ -69,13 +70,15 @@ export interface FirebaseTokenInfo {
  * Class for verifying general purpose Firebase JWTs. This verifies ID tokens and session cookies.
  */
 export class FirebaseTokenVerifier {
-  private publicKeys: {[key: string]: string};
+  private publicKeys: { [key: string]: string };
   private publicKeysExpireAt: number;
   private readonly shortNameArticle: string;
+  private readonly httpAgent?: Agent;
 
   constructor(private clientCertUrl: string, private algorithm: string,
               private issuer: string, private projectId: string,
-              private tokenInfo: FirebaseTokenInfo) {
+              private tokenInfo: FirebaseTokenInfo,
+              agent?: Agent) {
     if (!validator.isURL(clientCertUrl)) {
       throw new FirebaseAuthError(
         AuthClientErrorCode.INVALID_ARGUMENT,
@@ -122,6 +125,7 @@ export class FirebaseTokenVerifier {
         `The JWT expiration error code must be a non-null ErrorInfo object.`,
       );
     }
+    this.httpAgent = agent;
     this.shortNameArticle = tokenInfo.shortName.charAt(0).match(/[aeiou]/i) ? 'an' : 'a';
 
     // For backward compatibility, the project ID is validated in the verification call.
@@ -252,8 +256,8 @@ export class FirebaseTokenVerifier {
           // is actually correct.
           if (typeof decodedToken === 'string') {
             return reject(new FirebaseAuthError(
-                AuthClientErrorCode.INTERNAL_ERROR,
-                "Unexpected decodedToken. Expected an object but got a string: '" + decodedToken + "'",
+              AuthClientErrorCode.INTERNAL_ERROR,
+              "Unexpected decodedToken. Expected an object but got a string: '" + decodedToken + "'",
             ));
           } else {
             const decodedIdToken = (decodedToken as DecodedIdToken);
@@ -270,7 +274,7 @@ export class FirebaseTokenVerifier {
    *
    * @return {Promise<object>} A promise fulfilled with public keys for the Google certs.
    */
-  private fetchPublicKeys(): Promise<{[key: string]: string}> {
+  private fetchPublicKeys(): Promise<{ [key: string]: string }> {
     const publicKeysExist = (typeof this.publicKeys !== 'undefined');
     const publicKeysExpiredExists = (typeof this.publicKeysExpireAt !== 'undefined');
     const publicKeysStillValid = (publicKeysExpiredExists && Date.now() < this.publicKeysExpireAt);
@@ -281,6 +285,7 @@ export class FirebaseTokenVerifier {
     const client = new HttpClient();
     const request: HttpRequestConfig = {
       method: 'GET',
+      httpAgent: this.httpAgent,
       url: this.clientCertUrl,
     };
     return client.send(request).then((resp) => {
@@ -327,13 +332,14 @@ export class FirebaseTokenVerifier {
  * @param {string} projectId Project ID string.
  * @return {FirebaseTokenVerifier}
  */
-export function createIdTokenVerifier(projectId: string): FirebaseTokenVerifier {
+export function createIdTokenVerifier(projectId: string, agent?: Agent): FirebaseTokenVerifier {
   return new FirebaseTokenVerifier(
-      CLIENT_CERT_URL,
-      ALGORITHM_RS256,
-      'https://securetoken.google.com/',
-      projectId,
-      ID_TOKEN_INFO,
+    CLIENT_CERT_URL,
+    ALGORITHM_RS256,
+    'https://securetoken.google.com/',
+    projectId,
+    ID_TOKEN_INFO,
+    agent,
   );
 }
 
